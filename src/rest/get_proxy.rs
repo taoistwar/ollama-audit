@@ -7,7 +7,7 @@ use axum::{
 };
 use tracing::warn;
 
-const LOOP_HEADER: &str = "x-ollama-audit-proxy";
+const LOOP_HEADER: &str = "x-llm-audit-proxy";
 
 pub async fn get_proxy_handler(
     State(state): State<AppState>,
@@ -27,7 +27,7 @@ pub async fn get_proxy_handler(
         .unwrap_or("")
         .to_string();
 
-    let url = format!("{}{}", state.ollama_url(), path);
+    let url = format!("{}{}", state.llm_url(), path);
     let mut req_builder = state.http().request(parts.method.clone(), url);
 
     for (key, value) in parts.headers.iter() {

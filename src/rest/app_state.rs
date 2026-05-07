@@ -67,16 +67,16 @@ impl LangfuseConfig {
 
 #[derive(Clone)]
 pub struct AppState {
-    ollama_url: String,
+    llm_url: String,
     http: Client,
     langfuse: Option<LangfuseConfig>,
-    /// 为 true 时无论 Langfuse 是否成功，都写入本地审计日志（target: ollama_audit）
+    /// 为 true 时无论 Langfuse 是否成功，都写入本地审计日志（target: llm_audit）
     audit_log_always: bool,
 }
 
 impl AppState {
     pub fn factory() -> Self {
-        let ollama_url = std::env::var("OLLAMA_URL")
+        let llm_url = std::env::var("LLM_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:11434".to_string())
             .trim_end_matches('/')
             .to_string();
@@ -86,11 +86,11 @@ impl AppState {
         let audit_log_always = env_flag_true("AUDIT_LOG_ALWAYS");
         if audit_log_always {
             info!(
-                "AUDIT_LOG_ALWAYS: local audit logs (target ollama_audit) on every request/response"
+                "AUDIT_LOG_ALWAYS: local audit logs (target llm_audit) on every request/response"
             );
         }
         Self {
-            ollama_url,
+            llm_url,
             http: Client::builder()
                 .redirect(redirect::Policy::none())
                 .build()
@@ -100,20 +100,20 @@ impl AppState {
         }
     }
     pub fn new(
-        ollama_url: String,
+        llm_url: String,
         http: Client,
         langfuse: Option<LangfuseConfig>,
         audit_log_always: bool,
     ) -> Self {
         Self {
-            ollama_url,
+            llm_url,
             http,
             langfuse,
             audit_log_always,
         }
     }
-    pub fn ollama_url(&self) -> &str {
-        &self.ollama_url
+    pub fn llm_url(&self) -> &str {
+        &self.llm_url
     }
     pub fn http(&self) -> &Client {
         &self.http
@@ -124,8 +124,8 @@ impl AppState {
     pub fn audit_log_always(&self) -> bool {
         self.audit_log_always
     }
-    pub fn set_ollama_url(&mut self, ollama_url: String) {
-        self.ollama_url = ollama_url;
+    pub fn set_llm_url(&mut self, llm_url: String) {
+        self.llm_url = llm_url;
     }
     pub fn set_http(&mut self, http: Client) {
         self.http = http;

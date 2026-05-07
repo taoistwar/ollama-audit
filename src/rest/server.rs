@@ -19,7 +19,7 @@ pub async fn start_server() {
         .with_state(state);
 
     let addr = get_bind_addr();
-    info!("ollama-audit running at http://{}", addr);
+    info!("llm-audit running at http://{}", addr);
     let listener = TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

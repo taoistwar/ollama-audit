@@ -6,7 +6,7 @@ use crate::langfuse_post_batch;
 use crate::log_audit_request;
 use crate::log_audit_response;
 use crate::parse_input_value;
-use crate::parse_ollama_output;
+use crate::parse_llm_output;
 use crate::request_is_streaming;
 use axum::{
     body::Body,
@@ -21,7 +21,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
 use uuid::Uuid;
 
-const LOOP_HEADER: &str = "x-ollama-audit-proxy";
+const LOOP_HEADER: &str = "x-llm-audit-proxy";
 
 pub async fn post_proxy_handler(
     State(state): State<AppState>,
@@ -47,7 +47,7 @@ pub async fn post_proxy_handler(
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .to_bytes();
 
-    let url = format!("{}{}", state.ollama_url(), path);
+    let url = format!("{}{}", state.llm_url(), path);
     let mut req_builder = state.http().request(parts.method.clone(), url);
 
     for (key, value) in parts.headers.iter() {
@@ -134,7 +134,7 @@ pub async fn post_proxy_handler(
                     }
                 }
             }
-            let out = parse_ollama_output(&buf);
+            let out = parse_llm_output(&buf);
             if audit_always {
                 log_audit_response(&tid_stream, upstream_status, &out);
             }
@@ -168,7 +168,7 @@ pub async fn post_proxy_handler(
 
     let full = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
-    let out = parse_ollama_output(&full);
+    let out = parse_llm_output(&full);
     let upstream_status = status.as_u16();
     if state.audit_log_always() {
         log_audit_response(&trace_id, upstream_status, &out);

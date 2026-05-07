@@ -1,3 +1,6 @@
 /target
 .env
 /logs
+/bin/llm-audit
+test.sh
+*.py

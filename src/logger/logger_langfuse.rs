@@ -52,8 +52,8 @@ pub fn build_langfuse_start_batch(
             "body": {
                 "id": trace_id,
                 "timestamp": ts,
-                "name": format!("ollama {path}"),
-                "metadata": { "path": path, "source": "ollama-audit" },
+                "name": format!("llm {path}"),
+                "metadata": { "path": path, "source": "llm-audit" },
                 "input": input.clone(),
             }
         }),
@@ -64,7 +64,7 @@ pub fn build_langfuse_start_batch(
             "body": {
                 "id": gen_id,
                 "traceId": trace_id,
-                "name": "ollama",
+                "name": "llm",
                 "startTime": ts,
                 "model": model,
                 "input": input,

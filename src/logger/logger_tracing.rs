@@ -5,7 +5,7 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
 /// 本地审计日志：未启用 Langfuse、上报失败，或 `AUDIT_LOG_ALWAYS` 开启时写入
-pub const AUDIT_TARGET: &str = "ollama_audit";
+pub const AUDIT_TARGET: &str = "llm_audit";
 
 /// 初始化滚动文件日志（须持有返回的 `WorkerGuard` 直至进程结束，否则缓冲可能未刷盘）
 pub fn init_tracing() -> WorkerGuard {
@@ -22,7 +22,7 @@ pub fn init_tracing() -> WorkerGuard {
         _ => (Rotation::DAILY, "daily"),
     };
 
-    let file_appender = RollingFileAppender::new(rotation, &log_dir, "ollama-proxy");
+    let file_appender = RollingFileAppender::new(rotation, &log_dir, "llm-proxy");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     let file_layer = fmt::layer()
@@ -41,7 +41,7 @@ pub fn init_tracing() -> WorkerGuard {
         registry.with(stdout_layer).init();
     }
 
-    info!("rolling log file: directory={log_dir:?} prefix=ollama-proxy rotation={rotation_label}");
+    info!("rolling log file: directory={log_dir:?} prefix=llm-proxy rotation={rotation_label}");
 
     guard
 }

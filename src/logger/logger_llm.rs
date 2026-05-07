@@ -1,4 +1,4 @@
-pub fn parse_ollama_output(raw: &[u8]) -> serde_json::Value {
+pub fn parse_llm_output(raw: &[u8]) -> serde_json::Value {
     if raw.is_empty() {
         return serde_json::Value::Null;
     }
