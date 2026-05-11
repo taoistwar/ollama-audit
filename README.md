@@ -24,13 +24,16 @@ Environment variables are read from the process environment. If a `.env` file is
 |----------|----------|---------|-------------|
 | `LLM_URL` | No | `http://127.0.0.1:11434` | OpenAI base URL (no API path here; client paths are appended). A trailing slash is optional and normalized away. |
 | `BIND_ADDR` | No | `127.0.0.1:5000` | Address the proxy listens on (`host:port`). |
+| `HTTP_CLIENT_TIMEOUT_SECS` | No | `600` | Per-request timeout (seconds) for the shared HTTP client used for upstream and Langfuse (includes reading the body; long streams must finish within the limit). Set to `0` to disable (matches previous no-timeout behavior). Invalid values fall back to `600`. |
 | `LANGFUSE_PUBLIC_KEY` | For Langfuse | — | Langfuse API public key (HTTP Basic username). |
 | `LANGFUSE_SECRET_KEY` | For Langfuse | — | Langfuse API secret key (HTTP Basic password). |
 | `LANGFUSE_BASE_URL` | No | `https://cloud.langfuse.com` | Langfuse host (e.g. self-hosted `http://localhost:3000`). |
+| `LANGFUSE_ENABLE` | No | (unset: keys decide) | If `0`, `false`, `no`, or `off` (case-insensitive), **disable** Langfuse ingestion even when public/secret keys are set. When unset or any other value, ingestion still requires **both** keys non-empty. |
 
-Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are non-empty.
+Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are non-empty and `LANGFUSE_ENABLE` is not explicitly turned off.
 
 | `AUDIT_LOG_ALWAYS` | No | (off) | If `1`, `true`, `yes`, or `on` (case-insensitive), emit local audit logs (`target: llm_audit`) for every request and response even when Langfuse succeeds. |
+| `AUDIT_LOG_MAX_CHARS` | No | `16384` | Max UTF-8 bytes for `input` / `output` JSON in audit logs. Set to `0` for **no truncation** (full body). Other positive integers set a custom limit. Invalid values fall back to `16384`. |
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (created if missing). |
 | `LOG_ROTATION` | No | `daily` | `daily`, `hourly` / `hour`, or `minutely` / `minute`. |
 | `LOG_DISABLE_STDOUT` | No | (off) | If `true` / `1` / `yes` / `on`, only write logs to files (no console). |

@@ -47,5 +47,5 @@ pub async fn get_proxy_handler(
     let full = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
     let mut response = Response::new(Body::from(full));
     *response.status_mut() = status;
-    return Ok(response);
+    Ok(response)
 }

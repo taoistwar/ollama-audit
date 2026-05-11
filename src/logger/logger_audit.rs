@@ -13,8 +13,14 @@ pub fn truncate_log_string(s: &str, max: usize) -> String {
     format!("{}... [truncated, total {} chars]", &s[..end], s.len())
 }
 
-pub fn log_audit_request(trace_id: &str, path: &str, model: &str, input: &serde_json::Value) {
-    let input_s = truncate_log_string(&json_for_log(input), 16_384);
+pub fn log_audit_request(
+    trace_id: &str,
+    path: &str,
+    model: &str,
+    input: &serde_json::Value,
+    max_chars: usize,
+) {
+    let input_s = truncate_log_string(&json_for_log(input), max_chars);
     info!(
         target: AUDIT_TARGET,
         trace_id = %trace_id,
@@ -24,8 +30,13 @@ pub fn log_audit_request(trace_id: &str, path: &str, model: &str, input: &serde_
         "audit request"
     );
 }
-pub fn log_audit_response(trace_id: &str, upstream_status: u16, output: &serde_json::Value) {
-    let output_s: String = truncate_log_string(&json_for_log(output), 16_384);
+pub fn log_audit_response(
+    trace_id: &str,
+    upstream_status: u16,
+    output: &serde_json::Value,
+    max_chars: usize,
+) {
+    let output_s: String = truncate_log_string(&json_for_log(output), max_chars);
     info!(
         target: AUDIT_TARGET,
         trace_id = %trace_id,

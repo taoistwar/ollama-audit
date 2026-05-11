@@ -1,6 +1,7 @@
 use crate::AUDIT_TARGET;
 use crate::AppState;
 use crate::build_generation_update_batch;
+use crate::build_langfuse_full_batch;
 use crate::build_langfuse_start_batch;
 use crate::langfuse_post_batch;
 use crate::log_audit_request;
@@ -78,39 +79,62 @@ pub async fn post_proxy_handler(
     let trace_id = Uuid::new_v4().to_string();
     let gen_id = Uuid::new_v4().to_string();
 
-    if state.audit_log_always() || state.langfuse().is_none() {
-        log_audit_request(&trace_id, &path, &model, &input_val);
-    }
-    if let Some(cfg) = state.langfuse() {
-        let batch =
-            build_langfuse_start_batch(&trace_id, &gen_id, &path, input_val.clone(), &model);
-        let http = state.http().clone();
-        let cfg = cfg.clone();
-        let tid = trace_id.clone();
-        let path_c = path.clone();
-        let model_c = model.clone();
-        let input_c = input_val.clone();
-        let always = state.audit_log_always();
-        tokio::spawn(async move {
-            if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
-                warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse trace/generation create: {e}");
-                if !always {
-                    log_audit_request(&tid, &path_c, &model_c, &input_c);
-                }
-            }
-        });
-    }
-
     let status = resp.status();
+    let upstream_status = status.as_u16();
     let streaming = request_is_streaming(&body_bytes);
 
+    let audit_max = state.audit_log_max_chars();
+    if state.audit_log_always() {
+        log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
+    }
+
     if streaming {
+        // 流式：先发 trace-create + generation-create（运行期间用户能在 Langfuse 看到 trace），
+        // 通过 oneshot 等待其完成后再发 generation-update，避免 update 抢跑在 create 之前。
+        // true = Langfuse trace/generation create 已成功，才允许发 generation-update
+        let (start_done_tx, start_done_rx) = tokio::sync::oneshot::channel::<bool>();
+
+        if !state.audit_log_always() && state.langfuse().is_none() {
+            log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
+        }
+
+        if let Some(cfg) = state.langfuse() {
+            let batch = build_langfuse_start_batch(
+                &trace_id,
+                &gen_id,
+                &path,
+                input_val.clone(),
+                &model,
+            );
+            let http = state.http().clone();
+            let cfg = cfg.clone();
+            let tid = trace_id.clone();
+            let path_c = path.clone();
+            let model_c = model.clone();
+            let input_c = input_val.clone();
+            let always = state.audit_log_always();
+            tokio::spawn(async move {
+                let start_ok = match langfuse_post_batch(&http, &cfg, batch).await {
+                    Ok(()) => true,
+                    Err(e) => {
+                        warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse trace/generation create: {e}");
+                        if !always {
+                            log_audit_request(&tid, &path_c, &model_c, &input_c, audit_max);
+                        }
+                        false
+                    }
+                };
+                let _ = start_done_tx.send(start_ok);
+            });
+        } else {
+            let _ = start_done_tx.send(false);
+        }
+
         let lf = state.langfuse().clone();
         let http = state.http().clone();
         let gid = gen_id.clone();
         let tid_stream = trace_id.clone();
         let audit_always = state.audit_log_always();
-        let upstream_status = status.as_u16();
         let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
         tokio::spawn(async move {
             let mut s = resp.bytes_stream();
@@ -119,46 +143,46 @@ pub async fn post_proxy_handler(
                 match item {
                     Ok(chunk) => {
                         buf.extend_from_slice(&chunk);
-                        if tx.send(Ok(Bytes::from(chunk))).await.is_err() {
+                        if tx.send(Ok(chunk)).await.is_err() {
                             return;
                         }
                     }
                     Err(e) => {
-                        let _ = tx
-                            .send(Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                e.to_string(),
-                            )))
-                            .await;
+                        let _ = tx.send(Err(std::io::Error::other(e.to_string()))).await;
                         return;
                     }
                 }
             }
+            drop(tx);
+
             let out = parse_llm_output(&buf);
             if audit_always {
-                log_audit_response(&tid_stream, upstream_status, &out);
+                log_audit_response(&tid_stream, upstream_status, &out, audit_max);
             }
             match lf {
                 Some(cfg) => {
-                    let batch = build_generation_update_batch(&gid, out.clone());
-                    let tid_u = tid_stream.clone();
-                    let always = audit_always;
-                    tokio::spawn(async move {
-                        if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
-                            warn!(target: AUDIT_TARGET, trace_id = %tid_u, "langfuse generation-update: {e}");
-                            if !always {
-                                log_audit_response(&tid_u, upstream_status, &out);
-                            }
+                    // 等待 start batch 完成；仅 create 成功后再发 update（失败则跳过，避免对不存在 generation 打点）
+                    let start_ok = start_done_rx.await.unwrap_or(false);
+                    if !start_ok {
+                        if !audit_always {
+                            log_audit_response(&tid_stream, upstream_status, &out, audit_max);
                         }
-                    });
+                        return;
+                    }
+                    let batch = build_generation_update_batch(&gid, out.clone());
+                    if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
+                        warn!(target: AUDIT_TARGET, trace_id = %tid_stream, "langfuse generation-update: {e}");
+                        if !audit_always {
+                            log_audit_response(&tid_stream, upstream_status, &out, audit_max);
+                        }
+                    }
                 }
                 None => {
                     if !audit_always {
-                        log_audit_response(&tid_stream, upstream_status, &out);
+                        log_audit_response(&tid_stream, upstream_status, &out, audit_max);
                     }
                 }
             }
-            drop(tx);
         });
         let body = Body::from_stream(ReceiverStream::new(rx));
         let mut response = Response::new(body);
@@ -166,29 +190,50 @@ pub async fn post_proxy_handler(
         return Ok(response);
     }
 
+    // 非流式：等上游响应到齐后，把 trace-create / generation-create / generation-update
+    // 一次性塞进同一个 batch 提交，Langfuse 按 batch 内顺序处理，杜绝事件错序。
     let full = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let out = parse_llm_output(&full);
-    let upstream_status = status.as_u16();
+
     if state.audit_log_always() {
-        log_audit_response(&trace_id, upstream_status, &out);
+        log_audit_response(&trace_id, upstream_status, &out, audit_max);
     }
-    if let Some(cfg) = state.langfuse() {
-        let batch = build_generation_update_batch(&gen_id, out.clone());
-        let http = state.http().clone();
-        let cfg = cfg.clone();
-        let tid = trace_id.clone();
-        let always = state.audit_log_always();
-        tokio::spawn(async move {
-            if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
-                warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse generation-update: {e}");
-                if !always {
-                    log_audit_response(&tid, upstream_status, &out);
+
+    match state.langfuse() {
+        Some(cfg) => {
+            let batch = build_langfuse_full_batch(
+                &trace_id,
+                &gen_id,
+                &path,
+                input_val.clone(),
+                &model,
+                out.clone(),
+            );
+            let http = state.http().clone();
+            let cfg = cfg.clone();
+            let tid = trace_id.clone();
+            let path_c = path.clone();
+            let model_c = model.clone();
+            let input_c = input_val.clone();
+            let out_c = out.clone();
+            let always = state.audit_log_always();
+            tokio::spawn(async move {
+                if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
+                    warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse ingestion: {e}");
+                    if !always {
+                        log_audit_request(&tid, &path_c, &model_c, &input_c, audit_max);
+                        log_audit_response(&tid, upstream_status, &out_c, audit_max);
+                    }
                 }
+            });
+        }
+        None => {
+            if !state.audit_log_always() {
+                log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
+                log_audit_response(&trace_id, upstream_status, &out, audit_max);
             }
-        });
-    } else if !state.audit_log_always() {
-        log_audit_response(&trace_id, upstream_status, &out);
+        }
     }
 
     let mut response = Response::new(Body::from(full));

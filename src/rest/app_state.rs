@@ -1,6 +1,18 @@
-use crate::env_flag_true;
+use crate::{audit_log_max_chars_from_env, env_flag_explicit_false, env_flag_true};
 use reqwest::{Client, redirect};
+use std::time::Duration;
 use tracing::info;
+
+fn http_client_timeout() -> Option<Duration> {
+    match std::env::var("HTTP_CLIENT_TIMEOUT_SECS") {
+        Ok(s) if s.trim() == "0" => None,
+        Ok(s) => match s.trim().parse::<u64>() {
+            Ok(secs) if secs > 0 => Some(Duration::from_secs(secs)),
+            _ => Some(Duration::from_secs(600)),
+        },
+        Err(_) => Some(Duration::from_secs(600)),
+    }
+}
 
 #[derive(Clone)]
 pub struct LangfuseConfig {
@@ -11,6 +23,11 @@ pub struct LangfuseConfig {
 
 impl LangfuseConfig {
     pub fn factory() -> Option<Self> {
+        if env_flag_explicit_false("LANGFUSE_ENABLE") {
+            info!("Langfuse disabled: LANGFUSE_ENABLE is off (0/false/no/off)");
+            return None;
+        }
+
         let public_key = std::env::var("LANGFUSE_PUBLIC_KEY")
             .ok()
             .filter(|s| !s.is_empty())
@@ -72,6 +89,8 @@ pub struct AppState {
     langfuse: Option<LangfuseConfig>,
     /// 为 true 时无论 Langfuse 是否成功，都写入本地审计日志（target: llm_audit）
     audit_log_always: bool,
+    /// 审计日志中 input/output JSON 的最大 UTF-8 字节数（`usize::MAX` 表示不截断）
+    audit_log_max_chars: usize,
 }
 
 impl AppState {
@@ -89,14 +108,26 @@ impl AppState {
                 "AUDIT_LOG_ALWAYS: local audit logs (target llm_audit) on every request/response"
             );
         }
+        let audit_log_max_chars = audit_log_max_chars_from_env();
+        if audit_log_max_chars == usize::MAX {
+            info!("AUDIT_LOG_MAX_CHARS: unlimited (full input/output in audit logs)");
+        }
+        let mut http_builder = Client::builder().redirect(redirect::Policy::none());
+        if let Some(d) = http_client_timeout() {
+            info!("HTTP client timeout: {:?}", d);
+            http_builder = http_builder.timeout(d);
+        } else {
+            info!("HTTP client timeout: disabled (HTTP_CLIENT_TIMEOUT_SECS=0)");
+        }
+
         Self {
             llm_url,
-            http: Client::builder()
-                .redirect(redirect::Policy::none())
+            http: http_builder
                 .build()
                 .expect("failed to build HTTP client"),
             langfuse,
             audit_log_always,
+            audit_log_max_chars,
         }
     }
     pub fn new(
@@ -104,12 +135,14 @@ impl AppState {
         http: Client,
         langfuse: Option<LangfuseConfig>,
         audit_log_always: bool,
+        audit_log_max_chars: usize,
     ) -> Self {
         Self {
             llm_url,
             http,
             langfuse,
             audit_log_always,
+            audit_log_max_chars,
         }
     }
     pub fn llm_url(&self) -> &str {
@@ -124,6 +157,9 @@ impl AppState {
     pub fn audit_log_always(&self) -> bool {
         self.audit_log_always
     }
+    pub fn audit_log_max_chars(&self) -> usize {
+        self.audit_log_max_chars
+    }
     pub fn set_llm_url(&mut self, llm_url: String) {
         self.llm_url = llm_url;
     }
@@ -135,5 +171,8 @@ impl AppState {
     }
     pub fn set_audit_log_always(&mut self, audit_log_always: bool) {
         self.audit_log_always = audit_log_always;
+    }
+    pub fn set_audit_log_max_chars(&mut self, audit_log_max_chars: usize) {
+        self.audit_log_max_chars = audit_log_max_chars;
     }
 }

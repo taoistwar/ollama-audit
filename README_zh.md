@@ -24,13 +24,16 @@
 |------|----------|--------|------|
 | `LLM_URL` | 否 | `http://127.0.0.1:11434` | OpenAI 根地址（不要写 API 路径；客户端路径会拼在后面）。末尾 `/` 可写可不写，程序会自动去掉。 |
 | `BIND_ADDR` | 否 | `127.0.0.1:5000` | 代理监听地址，格式 `host:port`。 |
+| `HTTP_CLIENT_TIMEOUT_SECS` | 否 | `600` | 转发上游与 Langfuse 共用的 HTTP 客户端整请求超时（秒）；含读响应体，流式长连接须在时限内结束。设为 `0` 关闭超时（与原先无超时行为一致）。非法数值按 `600` 处理。 |
 | `LANGFUSE_PUBLIC_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 公钥（HTTP Basic 用户名）。 |
 | `LANGFUSE_SECRET_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 私钥（HTTP Basic 密码）。 |
 | `LANGFUSE_BASE_URL` | 否 | `https://cloud.langfuse.com` | Langfuse 实例地址（自建示例：`http://localhost:3000`）。 |
+| `LANGFUSE_ENABLE` | 否 | （未设置则按密钥决定） | 设为 `0`、`false`、`no`、`off`（大小写不敏感）时**关闭**向 Langfuse 写入，即使已配置公钥与私钥；未设置或非上述关闭值时，仍须公钥与私钥均非空才会上报。 |
 
-仅当 **`LANGFUSE_PUBLIC_KEY` 与 `LANGFUSE_SECRET_KEY` 均非空** 时才会启用 Langfuse。
+仅当 **`LANGFUSE_PUBLIC_KEY` 与 `LANGFUSE_SECRET_KEY` 均非空**，且未将 `LANGFUSE_ENABLE` 设为关闭值时，才会启用 Langfuse。
 
 | `AUDIT_LOG_ALWAYS` | 否 | 关闭 | 设为 `1`、`true`、`yes`、`on`（大小写不敏感）时，即使 Langfuse 上报成功，仍对每条请求与响应写本地审计日志（`target: llm_audit`）。 |
+| `AUDIT_LOG_MAX_CHARS` | 否 | `16384` | 审计日志里 `input` / `output` JSON 的最大 UTF-8 字节数。设为 `0` 表示**不截断**（完整写入）。其它正整数为自定义上限；非法值按 `16384` 处理。 |
 | `LOG_DIR` | 否 | `logs` | 滚动日志目录（不存在会自动创建）。 |
 | `LOG_ROTATION` | 否 | `daily` | `daily`，或 `hourly`/`hour`，或 `minutely`/`minute`。 |
 | `LOG_DISABLE_STDOUT` | 否 | 关闭 | 为真时只写文件、不往控制台打日志。 |
