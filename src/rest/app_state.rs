@@ -87,8 +87,8 @@ pub struct AppState {
     llm_url: String,
     http: Client,
     langfuse: Option<LangfuseConfig>,
-    /// 为 true 时无论 Langfuse 是否成功，都写入本地审计日志（target: llm_audit）
-    audit_log_always: bool,
+    /// 为 true 时对每条经代理转发的 LLM 请求与响应写入本地审计日志文件（`target: llm_audit`），与 Langfuse 是否成功无关
+    audit_log_enabled: bool,
     /// 审计日志中 input/output JSON 的最大 UTF-8 字节数（`usize::MAX` 表示不截断）
     audit_log_max_chars: usize,
 }
@@ -102,10 +102,10 @@ impl AppState {
 
         let langfuse = LangfuseConfig::factory();
 
-        let audit_log_always = env_flag_true("AUDIT_LOG_ALWAYS");
-        if audit_log_always {
+        let audit_log_enabled = env_flag_true("AUDIT_LOG_ENABLE");
+        if audit_log_enabled {
             info!(
-                "AUDIT_LOG_ALWAYS: local audit logs (target llm_audit) on every request/response"
+                "AUDIT_LOG_ENABLE: write llm_audit logs for every proxied request/response"
             );
         }
         let audit_log_max_chars = audit_log_max_chars_from_env();
@@ -126,7 +126,7 @@ impl AppState {
                 .build()
                 .expect("failed to build HTTP client"),
             langfuse,
-            audit_log_always,
+            audit_log_enabled,
             audit_log_max_chars,
         }
     }
@@ -134,14 +134,14 @@ impl AppState {
         llm_url: String,
         http: Client,
         langfuse: Option<LangfuseConfig>,
-        audit_log_always: bool,
+        audit_log_enabled: bool,
         audit_log_max_chars: usize,
     ) -> Self {
         Self {
             llm_url,
             http,
             langfuse,
-            audit_log_always,
+            audit_log_enabled,
             audit_log_max_chars,
         }
     }
@@ -154,8 +154,8 @@ impl AppState {
     pub fn langfuse(&self) -> &Option<LangfuseConfig> {
         &self.langfuse
     }
-    pub fn audit_log_always(&self) -> bool {
-        self.audit_log_always
+    pub fn audit_log_enabled(&self) -> bool {
+        self.audit_log_enabled
     }
     pub fn audit_log_max_chars(&self) -> usize {
         self.audit_log_max_chars
@@ -169,8 +169,8 @@ impl AppState {
     pub fn set_langfuse(&mut self, langfuse: Option<LangfuseConfig>) {
         self.langfuse = langfuse;
     }
-    pub fn set_audit_log_always(&mut self, audit_log_always: bool) {
-        self.audit_log_always = audit_log_always;
+    pub fn set_audit_log_enabled(&mut self, audit_log_enabled: bool) {
+        self.audit_log_enabled = audit_log_enabled;
     }
     pub fn set_audit_log_max_chars(&mut self, audit_log_max_chars: usize) {
         self.audit_log_max_chars = audit_log_max_chars;

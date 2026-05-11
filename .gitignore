@@ -4,3 +4,4 @@
 /bin/llm-audit
 test.sh
 *.py
+.cursor/

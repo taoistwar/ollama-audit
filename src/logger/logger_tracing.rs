@@ -4,7 +4,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, Registry, fmt, prelude::*};
 
-/// 本地审计日志：未启用 Langfuse、上报失败，或 `AUDIT_LOG_ALWAYS` 开启时写入
+/// 本地审计日志：未启用 Langfuse、上报失败，或 `AUDIT_LOG_ENABLE` 开启时对每条代理请求写入
 pub const AUDIT_TARGET: &str = "llm_audit";
 
 /// 初始化滚动文件日志（须持有返回的 `WorkerGuard` 直至进程结束，否则缓冲可能未刷盘）

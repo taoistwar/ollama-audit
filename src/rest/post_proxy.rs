@@ -84,7 +84,7 @@ pub async fn post_proxy_handler(
     let streaming = request_is_streaming(&body_bytes);
 
     let audit_max = state.audit_log_max_chars();
-    if state.audit_log_always() {
+    if state.audit_log_enabled() {
         log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
     }
 
@@ -94,7 +94,7 @@ pub async fn post_proxy_handler(
         // true = Langfuse trace/generation create 已成功，才允许发 generation-update
         let (start_done_tx, start_done_rx) = tokio::sync::oneshot::channel::<bool>();
 
-        if !state.audit_log_always() && state.langfuse().is_none() {
+        if !state.audit_log_enabled() && state.langfuse().is_none() {
             log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
         }
 
@@ -112,13 +112,13 @@ pub async fn post_proxy_handler(
             let path_c = path.clone();
             let model_c = model.clone();
             let input_c = input_val.clone();
-            let always = state.audit_log_always();
+            let audit_enabled = state.audit_log_enabled();
             tokio::spawn(async move {
                 let start_ok = match langfuse_post_batch(&http, &cfg, batch).await {
                     Ok(()) => true,
                     Err(e) => {
                         warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse trace/generation create: {e}");
-                        if !always {
+                        if !audit_enabled {
                             log_audit_request(&tid, &path_c, &model_c, &input_c, audit_max);
                         }
                         false
@@ -134,7 +134,7 @@ pub async fn post_proxy_handler(
         let http = state.http().clone();
         let gid = gen_id.clone();
         let tid_stream = trace_id.clone();
-        let audit_always = state.audit_log_always();
+        let audit_enabled = state.audit_log_enabled();
         let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
         tokio::spawn(async move {
             let mut s = resp.bytes_stream();
@@ -156,7 +156,7 @@ pub async fn post_proxy_handler(
             drop(tx);
 
             let out = parse_llm_output(&buf);
-            if audit_always {
+            if audit_enabled {
                 log_audit_response(&tid_stream, upstream_status, &out, audit_max);
             }
             match lf {
@@ -164,7 +164,7 @@ pub async fn post_proxy_handler(
                     // 等待 start batch 完成；仅 create 成功后再发 update（失败则跳过，避免对不存在 generation 打点）
                     let start_ok = start_done_rx.await.unwrap_or(false);
                     if !start_ok {
-                        if !audit_always {
+                        if !audit_enabled {
                             log_audit_response(&tid_stream, upstream_status, &out, audit_max);
                         }
                         return;
@@ -172,13 +172,13 @@ pub async fn post_proxy_handler(
                     let batch = build_generation_update_batch(&gid, out.clone());
                     if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
                         warn!(target: AUDIT_TARGET, trace_id = %tid_stream, "langfuse generation-update: {e}");
-                        if !audit_always {
+                        if !audit_enabled {
                             log_audit_response(&tid_stream, upstream_status, &out, audit_max);
                         }
                     }
                 }
                 None => {
-                    if !audit_always {
+                    if !audit_enabled {
                         log_audit_response(&tid_stream, upstream_status, &out, audit_max);
                     }
                 }
@@ -196,7 +196,7 @@ pub async fn post_proxy_handler(
 
     let out = parse_llm_output(&full);
 
-    if state.audit_log_always() {
+    if state.audit_log_enabled() {
         log_audit_response(&trace_id, upstream_status, &out, audit_max);
     }
 
@@ -217,11 +217,11 @@ pub async fn post_proxy_handler(
             let model_c = model.clone();
             let input_c = input_val.clone();
             let out_c = out.clone();
-            let always = state.audit_log_always();
+            let audit_enabled = state.audit_log_enabled();
             tokio::spawn(async move {
                 if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
                     warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse ingestion: {e}");
-                    if !always {
+                    if !audit_enabled {
                         log_audit_request(&tid, &path_c, &model_c, &input_c, audit_max);
                         log_audit_response(&tid, upstream_status, &out_c, audit_max);
                     }
@@ -229,7 +229,7 @@ pub async fn post_proxy_handler(
             });
         }
         None => {
-            if !state.audit_log_always() {
+            if !state.audit_log_enabled() {
                 log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
                 log_audit_response(&trace_id, upstream_status, &out, audit_max);
             }

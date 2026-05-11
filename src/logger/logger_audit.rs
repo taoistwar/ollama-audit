@@ -27,7 +27,7 @@ pub fn log_audit_request(
         path = %path,
         model = %model,
         input = %input_s,
-        "audit request"
+        "audit-request"
     );
 }
 pub fn log_audit_response(

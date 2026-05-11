@@ -32,7 +32,7 @@ Environment variables are read from the process environment. If a `.env` file is
 
 Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are non-empty and `LANGFUSE_ENABLE` is not explicitly turned off.
 
-| `AUDIT_LOG_ALWAYS` | No | (off) | If `1`, `true`, `yes`, or `on` (case-insensitive), emit local audit logs (`target: llm_audit`) for every request and response even when Langfuse succeeds. |
+| `AUDIT_LOG_ENABLE` | No | (off) | If `1`, `true`, `yes`, or `on` (case-insensitive), write proxied LLM request/response audit records (`target: llm_audit`) to the rolling log file for every call, regardless of Langfuse success. |
 | `AUDIT_LOG_MAX_CHARS` | No | `16384` | Max UTF-8 bytes for `input` / `output` JSON in audit logs. Set to `0` for **no truncation** (full body). Other positive integers set a custom limit. Invalid values fall back to `16384`. |
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (created if missing). |
 | `LOG_ROTATION` | No | `daily` | `daily`, `hourly` / `hour`, or `minutely` / `minute`. |

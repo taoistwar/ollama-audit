@@ -32,7 +32,7 @@
 
 仅当 **`LANGFUSE_PUBLIC_KEY` 与 `LANGFUSE_SECRET_KEY` 均非空**，且未将 `LANGFUSE_ENABLE` 设为关闭值时，才会启用 Langfuse。
 
-| `AUDIT_LOG_ALWAYS` | 否 | 关闭 | 设为 `1`、`true`、`yes`、`on`（大小写不敏感）时，即使 Langfuse 上报成功，仍对每条请求与响应写本地审计日志（`target: llm_audit`）。 |
+| `AUDIT_LOG_ENABLE` | 否 | 关闭 | 设为 `1`、`true`、`yes`、`on`（大小写不敏感）时，对每条经本代理拦截并转发的 LLM 请求与响应写入本地审计日志文件（`target: llm_audit`），与 Langfuse 是否上报成功无关。 |
 | `AUDIT_LOG_MAX_CHARS` | 否 | `16384` | 审计日志里 `input` / `output` JSON 的最大 UTF-8 字节数。设为 `0` 表示**不截断**（完整写入）。其它正整数为自定义上限；非法值按 `16384` 处理。 |
 | `LOG_DIR` | 否 | `logs` | 滚动日志目录（不存在会自动创建）。 |
 | `LOG_ROTATION` | 否 | `daily` | `daily`，或 `hourly`/`hour`，或 `minutely`/`minute`。 |
