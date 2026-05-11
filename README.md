@@ -11,6 +11,7 @@ A small Rust reverse proxy for [OpenAI](https://OpenAI.com/) HTTP APIs. It forwa
 - **Non-streaming** responses: full body is read, then a Langfuse `generation-update` is sent.
 - Langfuse is **optional**: if public/secret keys are not both set, the proxy still runs and only skips ingestion.
 - **Rolling file logs** via [`tracing-appender`](https://crates.io/crates/tracing-appender): files under `LOG_DIR` with prefix `llm-proxy`, rotated daily by default; stdout mirror unless disabled.
+- Optional **HTTPS**: when both `TLS_CERT_PATH` and `TLS_KEY_PATH` are set to non-empty PEM file paths, the proxy serves TLS on `BIND_ADDR` via [Rustls](https://github.com/rustls/rustls); otherwise it stays HTTP-only.
 
 ## Requirements
 
@@ -24,6 +25,8 @@ Environment variables are read from the process environment. If a `.env` file is
 |----------|----------|---------|-------------|
 | `LLM_URL` | No | `http://127.0.0.1:11434` | OpenAI base URL (no API path here; client paths are appended). A trailing slash is optional and normalized away. |
 | `BIND_ADDR` | No | `127.0.0.1:5000` | Address the proxy listens on (`host:port`). |
+| `TLS_CERT_PATH` | No | — | Path to the PEM certificate (chain). HTTPS is enabled only when **both** this and `TLS_KEY_PATH` are set to non-empty strings; otherwise the listener is plain HTTP. |
+| `TLS_KEY_PATH` | No | — | Path to the PEM private key. Used together with `TLS_CERT_PATH` as above. |
 | `HTTP_CLIENT_TIMEOUT_SECS` | No | `600` | Per-request timeout (seconds) for the shared HTTP client used for upstream and Langfuse (includes reading the body; long streams must finish within the limit). Set to `0` to disable (matches previous no-timeout behavior). Invalid values fall back to `600`. |
 | `LANGFUSE_PUBLIC_KEY` | For Langfuse | — | Langfuse API public key (HTTP Basic username). |
 | `LANGFUSE_SECRET_KEY` | For Langfuse | — | Langfuse API secret key (HTTP Basic password). |
@@ -56,10 +59,16 @@ cargo build --release
 
 ## Point clients at the proxy
 
-Configure your OpenAI client or SDK to use the proxy base URL (the value of `BIND_ADDR` as `http://host:port`) instead of OpenAI directly. Example with `curl`:
+Configure your OpenAI client or SDK to use the proxy base URL derived from `BIND_ADDR` as `http://host:port` or `https://host:port`, depending on whether TLS env vars are set, instead of OpenAI directly. Example with `curl` (HTTP):
 
 ```bash
 curl http://127.0.0.1:5000/api/chat -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+```
+
+With HTTPS enabled, use `https://…`; for self-signed certs, `curl` may need `-k` (insecure) or `--cacert` pointing at your CA.
+
+```bash
+curl https://127.0.0.1:5000/api/chat -k -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
 
 Only **POST** is registered on the router; other methods are not proxied.

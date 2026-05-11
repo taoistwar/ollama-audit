@@ -11,6 +11,7 @@
 - **非流式**响应：读完整包体后再发送 Langfuse `generation-update`。
 - Langfuse **可选**：公钥与私钥未同时配置时，仅跳过上报，代理照常。
 - **滚动文件日志**：使用 `tracing-appender`，默认写入 `LOG_DIR`（默认 `logs/`）、文件名前缀 `llm-proxy`，按天滚动；默认同时输出到控制台，可通过环境变量关闭。
+- **可选 HTTPS**：同时设置非空的 `TLS_CERT_PATH` 与 `TLS_KEY_PATH`（PEM）时，在 `BIND_ADDR` 上使用 [Rustls](https://github.com/rustls/rustls) 提供 TLS；未设置则仍为 HTTP。
 
 ## 环境要求
 
@@ -24,6 +25,8 @@
 |------|----------|--------|------|
 | `LLM_URL` | 否 | `http://127.0.0.1:11434` | OpenAI 根地址（不要写 API 路径；客户端路径会拼在后面）。末尾 `/` 可写可不写，程序会自动去掉。 |
 | `BIND_ADDR` | 否 | `127.0.0.1:5000` | 代理监听地址，格式 `host:port`。 |
+| `TLS_CERT_PATH` | 否 | — | PEM 证书（链）文件路径。须与 `TLS_KEY_PATH` **同时**设为非空字符串才会在 `BIND_ADDR` 上启用 HTTPS；否则监听 HTTP。 |
+| `TLS_KEY_PATH` | 否 | — | PEM 私钥文件路径。与 `TLS_CERT_PATH` 配对使用，规则同上。 |
 | `HTTP_CLIENT_TIMEOUT_SECS` | 否 | `600` | 转发上游与 Langfuse 共用的 HTTP 客户端整请求超时（秒）；含读响应体，流式长连接须在时限内结束。设为 `0` 关闭超时（与原先无超时行为一致）。非法数值按 `600` 处理。 |
 | `LANGFUSE_PUBLIC_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 公钥（HTTP Basic 用户名）。 |
 | `LANGFUSE_SECRET_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 私钥（HTTP Basic 密码）。 |
@@ -56,10 +59,16 @@ cargo build --release
 
 ## 客户端如何对接
 
-把 OpenAI 客户端/SDK 的基地址改成代理地址（即 `BIND_ADDR` 对应的 `http://主机:端口`），而不是直连 OpenAI。`curl` 示例：
+把 OpenAI 客户端/SDK 的基地址改成代理地址（即 `BIND_ADDR` 对应的 `http://主机:端口` 或 `https://主机:端口`，取决于是否配置了 TLS），而不是直连 OpenAI。`curl` 示例（HTTP）：
 
 ```bash
 curl http://127.0.0.1:5000/api/chat -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+```
+
+若已启用 HTTPS，请将 URL 改为 `https://…`，自签证书场景下对 `curl` 可加上 `-k`（跳过校验）或 `--cacert` 指向你的 CA。
+
+```bash
+curl https://127.0.0.1:5000/api/chat -k -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
 
 当前路由只注册了 **POST**；其它 HTTP 方法不会被代理。
